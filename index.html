@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset='utf-8'>
+  <title>Bortex</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' height='100' width='100'%3E%3Ccircle r='100' fill='%230bdbe6' /%3E%3C/svg%3E" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: rgb(19, 19, 19);
+    }
+
+    canvas {
+      position: absolute;
+      transform: rotateX(180deg);
+    }
+
+    #left-laser, #right-laser {
+      opacity: 70%;
+    }
+
+    div {
+      background-color: #0bdbe6;
+      width: 200px;
+      height: 100px;
+      text-align: center;
+      vertical-align: middle;
+      line-height: 100px;   
+      rotate: 10%;
+    }
+  </style>
+</head>
+
+<body>
+  <div>Drop a KSH file here 😎</div>
+  <script>
+    const noteWidth = 15
+    const chartHeight = 20000
+    const btColor = 'lightgrey'
+    const fxColor = 'orange'
+    const leftLaserColor = '#2f4aaf'
+    const rightLaserColor = '#af2e76'
+
+    document.addEventListener("dragover", function(event) {
+      event.preventDefault()
+    })
+
+    document.body.addEventListener('drop', (e) => {
+      e.preventDefault()
+      let fuck = e.dataTransfer.items
+      let item
+      if (!e.dataTransfer.items || !([item] = e.dataTransfer.items) || item.kind !== 'file')
+        return
+
+      const fr = new FileReader
+      fr.onload = (e) => parseChart(e.target.result)
+      fr.readAsText(item.getAsFile())
+    })
+
+    const parseChart = (chart) => {      
+      document.body.innerHTML = ''
+
+      const fxElem = document.createElement('canvas')
+      const btElem = document.createElement('canvas')
+      const leftLaserElem = document.createElement('canvas')
+      const rightLaserElem = document.createElement('canvas')
+
+      fxElem.id = 'fx'
+      btElem.id = 'bt'
+      leftLaserElem.id = 'left-laser'
+      rightLaserElem.id = 'right-laser'
+
+      document.body.appendChild(fxElem)
+      document.body.appendChild(btElem)
+      document.body.appendChild(leftLaserElem)
+      document.body.appendChild(rightLaserElem)
+
+      const fxCtx = fxElem.getContext('2d')
+      const btCtx = btElem.getContext('2d')
+      const leftLaserCtx = leftLaserElem.getContext('2d')
+      const rightLaserCtx = rightLaserElem.getContext('2d')
+      
+      const drawBT = (column, noteId, measureHeight, measureId, measureSize, fx = false) => {
+        const ctx = fx ? fxCtx : btCtx
+        let width = noteWidth
+        const height = 4
+        ctx.fillStyle = btColor
+  
+        if (fx) {
+          width = width * 2
+          ctx.fillStyle = fxColor
+        }
+  
+        ctx.fillRect(width * column, ((noteId / measureSize) + measureId) * measureHeight, width - 2, height)
+      }
+  
+      const drawMeasure = (measureHeight, measureId, measureSize) => {
+        const ctx = fxCtx
+        let width = noteWidth * 4
+        const height = 4
+        ctx.fillStyle = 'black'
+        ctx.fillRect(0, (measureId) * measureHeight, width - 2, 1)
+      }
+  
+      const getStart = ({ noteId, measureHeight, measureId, measureSize }) => ((noteId / measureSize) + measureId) * measureHeight
+  
+      const drawHold = (column, start, end, fx = false) => {
+        const ctx = fx ? fxCtx : btCtx
+        let width = noteWidth
+        const startY = getStart(start)
+        ctx.fillStyle = btColor
+  
+        if (fx) {
+          width = width * 2
+          ctx.fillStyle = fxColor
+        }
+  
+        ctx.fillRect(width * column, startY, width - 2, (getStart(end) - startY))
+      }
+  
+      const computeLaserPositions = () => {
+        const positionString = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmno'
+        const length = positionString.length
+        let computeLaserPositions = {}
+        for (let i = 0; i < length; i++) {
+          computeLaserPositions[positionString[i]] = i / length
+        }
+  
+        return computeLaserPositions
+      }
+  
+      const laserPositions = computeLaserPositions()
+  
+      const startLaser = (left, position, start) => {
+        const ctx = left ? leftLaserCtx : rightLaserCtx
+        ctx.strokeStyle = left ? leftLaserColor : rightLaserColor
+        ctx.lineWidth = 5
+        ctx.moveTo(laserPositions[position] * 4 * noteWidth * 0.8, getStart(start))
+        ctx.beginPath()
+        ctx.lineTo(laserPositions[position] * 4 * noteWidth * 0.8, getStart({...start, noteId: start.noteId }))
+      }
+  
+      const stopLaser = (left, position, start, slam) => {
+        const ctx = left ? leftLaserCtx : rightLaserCtx
+        if (slam) {
+          ctx.lineTo(laserPositions[position] * 4 * noteWidth * 0.8, getStart(start))
+        }
+        ctx.stroke()
+      }
+  
+      const moveLaser = (left, position, start, slam) => {
+        if (slam) {
+          start = { ...start, noteId: start.noteId - 3 }
+        }
+  
+        const ctx = left ? leftLaserCtx : rightLaserCtx
+        ctx.lineTo(laserPositions[position] * 4 * noteWidth * 0.8, getStart(start))
+      }
+  
+      const isNewMeasure = line => line == '--'
+      const isConfiguration = line => ['0', '1', '2'].indexOf(line[0]) === -1
+
+      const lines = chart.split('\r\n')
+      const measuresCount = chart.match(/\r\n--\r\n/g).length
+      let measureHeight = chartHeight / measuresCount
+      rightLaserCtx.canvas.height = leftLaserCtx.canvas.height = fxCtx.canvas.height = btCtx.canvas.height = measuresCount * measureHeight
+      rightLaserCtx.canvas.width = leftLaserCtx.canvas.width = fxCtx.canvas.width = btCtx.canvas.width = 4 * noteWidth
+      let measureId = 0
+      let measureSize = 0
+      let noteId = 0
+      let holdFX = {}
+      let holdBT = {}
+      let holdLasers = {}
+      let stillLaserCount = {0: 0, 1: 0}
+      lines.forEach((line, lineIndex) => {
+        // todo find a cleaner way to skip conf
+        if (!['0', '1', '2', '-'].includes(line[0])) {
+          return
+        }
+  
+        const newMeasure = isNewMeasure(line)
+        if (newMeasure) {
+          measureId++
+          drawMeasure(measureHeight, measureId, measureSize)
+          measureSize = 0
+          let current = lineIndex + 1
+          while (true) {
+            const tickLine = lines[current]
+            if (tickLine == undefined || isNewMeasure(tickLine)) {
+              break
+            }
+  
+            if (!isConfiguration(tickLine)) {
+              measureSize++
+            }
+  
+            current++
+          }
+  
+          noteId = 0
+          return
+        }
+  
+        // skip configuration lines
+        if (isConfiguration(line)) {
+          return
+        }
+  
+        const [bts, fxs, lasers] = line.substring(0, 10).split('|')
+  
+        for (let i = 0; i < fxs.length; i++) {
+          // taps
+          if (fxs[i] === '2') {
+            drawBT(i, noteId, measureHeight, measureId, measureSize, true)
+            continue
+          }
+  
+          if (fxs[i] === '1' && holdFX[i] === undefined) {
+            // hold start
+            holdFX[i] = { noteId, measureHeight, measureId, measureSize }
+          } else if (fxs[i] !== '1' && holdFX[i] !== undefined) {
+            // hold release
+            drawHold(i, holdFX[i], { noteId, measureHeight, measureId, measureSize }, true)
+            delete holdFX[i]
+          }
+        }
+  
+        for (let i = 0; i < bts.length; i++) {
+          // taps
+          if (bts[i] == '1') {
+            drawBT(i, noteId, measureHeight, measureId, measureSize)
+          }
+  
+          if (bts[i] === '2' && holdBT[i] === undefined) {
+            // hold start
+            holdBT[i] = { noteId, measureHeight, measureId, measureSize }
+          } else if (bts[i] !== '2' && holdBT[i] !== undefined) {
+            // hold release
+            drawHold(i, holdBT[i], { noteId, measureHeight, measureId, measureSize })
+            delete holdBT[i]
+          }
+        }
+  
+        for (let i = 0; i < lasers.length; i++) {
+          const left = i === 0
+  
+          if (lasers[i] === ':') {
+            stillLaserCount[i]++
+            continue
+          }
+  
+          const slam = stillLaserCount[i] == 2
+  
+          if (lasers[i] === '-') {
+            if (holdLasers[i] !== undefined) {
+              stopLaser(left, holdLasers[i], { noteId, measureHeight, measureId, measureSize }, slam)
+              stillLaserCount[i] = 0
+              delete holdLasers[i]
+            }
+  
+            continue
+          }
+  
+  
+          if (holdLasers[i] === undefined) {
+            startLaser(left, lasers[i], { noteId, measureHeight, measureId, measureSize })
+            holdLasers[i] = lasers[i]
+            continue
+          }
+  
+          moveLaser(left, lasers[i], { noteId, measureHeight, measureId, measureSize }, slam)
+          holdLasers[i] = lasers[i]
+          if (!slam)
+            stillLaserCount[i] = 0
+        }
+  
+        noteId++
+      })
+  
+      window.scrollTo(0, 1000000)
+    }
+  </script>
+</body>
+
+</html>
